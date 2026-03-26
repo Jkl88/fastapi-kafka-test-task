@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kafka Дашборд</title>
+  <style>
+    :root { --bg:#e8f1ff; --card:#f8fbff; --line:#c5d6f1; --text:#102038; --muted:#56708f; --accent:#1d4ed8; --accent-dark:#1e3a8a; --ok:#0f9f6e; --bad:#dc2626; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:"Avenir Next","Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(29,78,216,.18), transparent 26%), radial-gradient(circle at bottom right, rgba(59,130,246,.16), transparent 24%), linear-gradient(135deg,#eff6ff,#dbeafe); }
+    .page { width:min(1160px, calc(100vw - 24px)); margin:12px auto; padding:24px; min-height:calc(100vh - 24px); max-height:calc(100vh - 24px); display:grid; grid-template-rows:auto minmax(0,1fr); border:1px solid rgba(32,74,135,.12); border-radius:28px; background:rgba(248,251,255,.8); backdrop-filter:blur(14px); box-shadow:0 20px 50px rgba(24,48,86,.14); overflow:hidden; }
+    .hero { margin-bottom:20px; }
+    .tag { display:inline-block; padding:6px 12px; border-radius:999px; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-dark); background:rgba(29,78,216,.12); }
+    h1 { margin:12px 0 8px; font-size:clamp(32px, 4vw, 54px); line-height:.96; letter-spacing:-.04em; }
+    .subtitle { margin:0; max-width:720px; line-height:1.6; color:var(--muted); }
+    .grid { display:grid; grid-template-columns:minmax(320px, 390px) minmax(0, 1fr); gap:18px; min-height:0; }
+    .panel { border:1px solid var(--line); border-radius:22px; padding:18px; background:rgba(248,251,255,.96); min-height:0; max-height:100%; overflow:auto; scrollbar-gutter:stable; }
+    .panel h2 { margin:0 0 6px; font-size:19px; }
+    .panel p { margin:0 0 14px; color:var(--muted); line-height:1.5; }
+    .field { display:grid; gap:8px; margin-bottom:14px; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+    input, textarea, button { font:inherit; }
+    input, textarea { width:100%; padding:14px; border:1px solid rgba(30,58,138,.14); border-radius:16px; background:#ffffff; color:var(--text); }
+    textarea { min-height:180px; resize:vertical; font-family:"IBM Plex Mono","Consolas",monospace; font-size:13px; line-height:1.5; }
+    button { width:100%; padding:14px 18px; border:0; border-radius:16px; color:#f4f9ff; font-weight:800; cursor:pointer; background:linear-gradient(135deg,var(--accent),var(--accent-dark)); box-shadow:0 12px 22px rgba(29,78,216,.22); }
+    .status { display:flex; align-items:center; gap:10px; margin-top:12px; color:var(--muted); }
+    .dot { width:12px; height:12px; border-radius:999px; background:var(--bad); }
+    .dot.live { background:var(--ok); box-shadow:0 0 0 0 rgba(5,150,105,.3); animation:pulse 1.6s infinite; }
+    @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(5,150,105,.3);} 70% { box-shadow:0 0 0 12px rgba(5,150,105,0);} 100% { box-shadow:0 0 0 0 rgba(5,150,105,0);} }
+    .flash { min-height:24px; margin-top:10px; font-size:14px; font-weight:700; }
+    .flash.error { color:#b42318; } .flash.success { color:var(--accent-dark); }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+    .card { border:1px solid var(--line); border-radius:18px; padding:14px; background:rgba(255,255,255,.86); }
+    .card .label { font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+    .card .value { margin-top:8px; font-size:34px; font-weight:900; letter-spacing:-.05em; }
+    .table-wrap { overflow:auto; border:1px solid var(--line); border-radius:18px; background:rgba(255,255,255,.82); max-height:100%; }
+    table { width:100%; border-collapse:collapse; min-width:720px; }
+    th, td { padding:14px 16px; border-bottom:1px solid rgba(30,58,138,.08); text-align:left; vertical-align:top; }
+    th { position:sticky; top:0; background:#edf4ff; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+    code { padding:3px 6px; border-radius:999px; background:rgba(30,64,175,.06); font-family:"IBM Plex Mono","Consolas",monospace; font-size:12px; }
+    .empty { padding:18px; color:var(--muted); }
+    @media (max-width: 960px) { .page { padding:18px; max-height:none; min-height:calc(100vh - 24px); } .grid { grid-template-columns:1fr; min-height:auto; } .panel { max-height:none; overflow:visible; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="tag">Демо Kafka</div>
+      <h1>Дашборд консьюмеров</h1>
+      <p class="subtitle">Счетчики и последние события обновляются через WebSocket.</p>
+    </section>
+    <section class="grid">
+      <aside class="panel">
+        <h2>Отправка сообщения</h2>
+        <p>Поле payload JSON-объект.</p>
+        <form id="publish-form">
+          <label class="field">Ключ сообщения<input id="message-key" value="user-1" required /></label>
+          <label class="field">Payload JSON<textarea id="message-payload" spellcheck="false">{
+  "event": "user_registered",
+  "user_id": 1
+}</textarea></label>
+          <button type="submit">Отправить в Kafka</button>
+        </form>
+        <div class="status"><span id="ws-dot" class="dot"></span><span id="ws-label">WebSocket отключен</span></div>
+        <div id="flash" class="flash"></div>
+      </aside>
+      <section class="panel">
+        <h2>Активность консьюмеров</h2>
+        <div class="cards">
+          <article class="card"><div class="label">Всего сообщений</div><div class="value" id="total-count">0</div></article>
+        </div>
+        <div class="cards" id="consumer-cards"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Время</th><th>Консьюмер</th><th>Партиция</th><th>Offset</th><th>Ключ</th><th>Значение</th></tr>
+            </thead>
+            <tbody id="events-body"></tbody>
+          </table>
+          <div id="empty-state" class="empty">Пока нет прочитанных сообщений.</div>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script>
+    const flash = document.getElementById("flash");
+    const totalCount = document.getElementById("total-count");
+    const consumerCards = document.getElementById("consumer-cards");
+    const eventsBody = document.getElementById("events-body");
+    const emptyState = document.getElementById("empty-state");
+    const wsDot = document.getElementById("ws-dot");
+    const wsLabel = document.getElementById("ws-label");
+    const form = document.getElementById("publish-form");
+    const keyInput = document.getElementById("message-key");
+    const payloadInput = document.getElementById("message-payload");
+
+    function setFlash(message, kind) {
+      flash.textContent = message;
+      flash.className = kind ? `flash ${kind}` : "flash";
+    }
+
+    function setSocketState(isLive) {
+      wsDot.classList.toggle("live", isLive);
+      wsLabel.textContent = isLive ? "WebSocket подключен" : "WebSocket отключен";
+    }
+
+    function renderConsumers(consumerCounts) {
+      consumerCards.innerHTML = "";
+      Object.entries(consumerCounts).forEach(([name, count]) => {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.innerHTML = `<div class="label">${name}</div><div class="value">${count}</div>`;
+        consumerCards.appendChild(card);
+      });
+    }
+
+    function renderEvents(events) {
+      eventsBody.innerHTML = "";
+      emptyState.style.display = events.length ? "none" : "block";
+
+      events.forEach((item) => {
+        const row = document.createElement("tr");
+        const cells = [
+          item.received_at,
+          item.worker_name,
+          String(item.partition),
+          String(item.offset),
+          item.key === null ? "(нет)" : item.key,
+          JSON.stringify(item.value),
+        ];
+
+        cells.forEach((value, index) => {
+          const cell = document.createElement("td");
+          if (index >= 4) {
+            const code = document.createElement("code");
+            code.textContent = value;
+            cell.appendChild(code);
+          } else {
+            cell.textContent = value;
+          }
+          row.appendChild(cell);
+        });
+
+        eventsBody.appendChild(row);
+      });
+    }
+
+    function applySnapshot(snapshot) {
+      totalCount.textContent = String(snapshot.total_messages);
+      renderConsumers(snapshot.consumer_counts);
+      renderEvents(snapshot.recent_events);
+    }
+
+    async function publishMessage(event) {
+      event.preventDefault();
+      setFlash("", "");
+
+      let payload;
+      try {
+        payload = JSON.parse(payloadInput.value);
+      } catch (error) {
+        setFlash("Payload должен быть валидным JSON.", "error");
+        return;
+      }
+
+      if (payload === null || Array.isArray(payload) || typeof payload !== "object") {
+        setFlash("Payload должен быть JSON-объектом.", "error");
+        return;
+      }
+
+      try {
+        const response = await fetch("/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: keyInput.value, payload }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(typeof data.detail === "string" ? data.detail : "Не удалось отправить сообщение.");
+        }
+        setFlash(`Сообщение с ключом ${data.key} отправлено в topic ${data.topic}.`, "success");
+      } catch (error) {
+        setFlash(error.message || "Не удалось отправить сообщение.", "error");
+      }
+    }
+
+    function connectWebSocket() {
+      const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+      const socket = new WebSocket(`${scheme}://${window.location.host}/dashboard/ws`);
+
+      socket.addEventListener("open", () => setSocketState(true));
+      socket.addEventListener("close", () => {
+        setSocketState(false);
+        window.setTimeout(connectWebSocket, 1500);
+      });
+      socket.addEventListener("error", () => setSocketState(false));
+      socket.addEventListener("message", (event) => {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "snapshot") {
+          applySnapshot(payload);
+        }
+      });
+    }
+
+    form.addEventListener("submit", publishMessage);
+    connectWebSocket();
+  </script>
+</body>
+</html>

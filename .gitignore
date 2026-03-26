@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+.idea/
+.vscode/
+.pytest_cache/
+LOCAL_PROJECT.md
